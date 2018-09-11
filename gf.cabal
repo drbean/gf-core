@@ -108,11 +108,11 @@ Library
   extensions:
 
   exposed-modules:
-  other-modules:
     PGF
     PGF.Internal
     PGF.Haskell
 
+  other-modules:
     PGF.Data
     PGF.Macros
     PGF.Binary
