@@ -1,4 +1,4 @@
-.PHONY: all build install doc clean gf sdist
+.PHONY: all build install doc clean gf html deb pkg bintar sdist
 
 # This gets the numeric part of the version from the cabal file
 VERSION=$(shell sed -ne "s/^version: *\([0-9.]*\).*/\1/p" gf.cabal)
@@ -20,6 +20,7 @@ doc:
 
 clean:
 	cabal clean
+	bash bin/clean_html
 
 gf:
 	cabal build rgl-none
@@ -32,7 +33,7 @@ html::
 # number to the top of debian/changelog.
 # (Tested on Ubuntu 15.04. You need to install dpkg-dev & debhelper.)
 deb:
-	dpkg-buildpackage -b
+	dpkg-buildpackage -b -uc
 
 # Make an OS X Installer package
 pkg:

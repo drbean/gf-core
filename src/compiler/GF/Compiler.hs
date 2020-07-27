@@ -7,6 +7,7 @@ import GF.Compile as S(batchCompile,link,srcAbsName)
 import GF.CompileInParallel as P(parallelBatchCompile)
 import GF.Compile.Export
 import GF.Compile.ConcreteToHaskell(concretes2haskell)
+import GF.Compile.GrammarToCanonical--(concretes2canonical)
 import GF.Compile.CFGtoPGF
 import GF.Compile.GetGrammar
 import GF.Grammar.BNFC
@@ -17,12 +18,13 @@ import GF.Infra.UseIO
 import GF.Infra.Option
 import GF.Data.ErrM
 import GF.System.Directory
-import GF.Text.Pretty(render)
+import GF.Text.Pretty(render,render80)
 
 import Data.Maybe
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import qualified Data.ByteString.Lazy as BSL
+import GF.Grammar.CanonicalJSON (encodeJSON)
 import System.FilePath
 import Control.Monad(when,unless,forM_)
 
@@ -47,7 +49,7 @@ mainGFC opts fs = do
 compileSourceFiles :: Options -> [FilePath] -> IOE ()
 compileSourceFiles opts fs = 
     do output <- batchCompile opts fs
-       cncs2haskell output
+       exportCanonical output
        unless (flag optStopAfterPhase opts == Compile) $
            linkGrammars opts output
   where
@@ -55,15 +57,35 @@ compileSourceFiles opts fs =
     batchCompile' opts fs = do (t,cnc_gr) <- S.batchCompile opts fs
                                return (t,[cnc_gr])
 
-    cncs2haskell output =
-      when (FmtHaskell `elem` flag optOutputFormats opts &&
-            haskellOption opts HaskellConcrete) $
-        mapM_ cnc2haskell (snd output)
+    exportCanonical (_time, canonical) =
+      do when (FmtHaskell `elem` ofmts && haskellOption opts HaskellConcrete) $
+           mapM_ cnc2haskell canonical
+         when (FmtCanonicalGF `elem` ofmts) $
+           do createDirectoryIfMissing False "canonical"
+              mapM_ abs2canonical canonical
+              mapM_ cnc2canonical canonical
+         when (FmtCanonicalJson `elem` ofmts) $ mapM_ grammar2json canonical
+      where
+        ofmts = flag optOutputFormats opts
 
     cnc2haskell (cnc,gr) =
-        mapM_ writeHs $ concretes2haskell opts (srcAbsName gr cnc) gr
+      do mapM_ writeExport $ concretes2haskell opts (srcAbsName gr cnc) gr
 
-    writeHs (path,s) = writing opts path $ writeUTF8File path s
+    abs2canonical (cnc,gr) =
+        writeExport ("canonical/"++render absname++".gf",render80 canAbs)
+      where
+        absname = srcAbsName gr cnc
+        canAbs = abstract2canonical absname gr
+
+    cnc2canonical (cnc,gr) =
+      mapM_ (writeExport.fmap render80) $
+            concretes2canonical opts (srcAbsName gr cnc) gr
+
+    grammar2json (cnc,gr) = encodeJSON (render absname ++ ".json") gr_canon
+      where absname = srcAbsName gr cnc
+            gr_canon = grammar2canonical opts absname gr
+
+    writeExport (path,s) = writing opts path $ writeUTF8File path s
 
 
 -- | Create a @.pgf@ file (and possibly files in other formats, if specified
@@ -80,7 +102,9 @@ linkGrammars opts (t_src,~cnc_grs@(~(cnc,gr):_)) =
        if t_pgf >= Just t_src
          then putIfVerb opts $ pgfFile ++ " is up-to-date."
          else do pgfs <- mapM (link opts) cnc_grs
-                 let pgf = foldl1 unionPGF pgfs
+                 let pgf0 = foldl1 unionPGF pgfs
+                 probs <- maybe (return . defaultProbabilities) readProbabilitiesFromFile (flag optProbsFile opts) pgf0
+                 let pgf = setProbabilities probs pgf0
                  writePGF opts pgf
                  writeOutputs opts pgf
 
@@ -115,7 +139,9 @@ unionPGFFiles opts fs =
     doIt =
       do pgfs <- mapM readPGFVerbose fs
          let pgf0 = foldl1 unionPGF pgfs
-             pgf  = if flag optOptimizePGF opts then optimizePGF pgf0 else pgf0
+             pgf1 = if flag optOptimizePGF opts then optimizePGF pgf0 else pgf0
+         probs <- liftIO (maybe (return . defaultProbabilities) readProbabilitiesFromFile (flag optProbsFile opts) pgf1)
+         let pgf  = setProbabilities probs pgf1
              pgfFile = outputPath opts (grammarName opts pgf <.> "pgf")
          if pgfFile `elem` fs
            then putStrLnE $ "Refusing to overwrite " ++ pgfFile

@@ -153,6 +153,8 @@ cpgfMain qsem command (t,(pgf,pc)) =
     "c-parse"       -> withQSem qsem $
                        out t=<< join (parse # input % start % limit % treeopts)
     "c-linearize"   -> out t=<< lin # tree % to
+    "c-bracketedLinearize"
+                    -> out t=<< bracketedLin # tree % to
     "c-linearizeAll"-> out t=<< linAll # tree % to
     "c-translate"   -> withQSem qsem $
                        out t=<<join(trans # input % to % start % limit%treeopts)
@@ -223,6 +225,10 @@ cpgfMain qsem command (t,(pgf,pc)) =
     lin tree to = showJSON (lin' tree to)
     lin' tree (tos,unlex) =
         [makeObj ["to".=to,"text".=unlex (C.linearize c tree)]|(to,c)<-tos]
+
+    bracketedLin tree to = showJSON (bracketedLin' tree to)
+    bracketedLin' tree (tos,unlex) =
+        [makeObj ["to".=to,"brackets".=showJSON (C.bracketedLinearize c tree)]|(to,c)<-tos]
 
     trans input@((from,_),_) to start mlimit (trie,jsontree) =
       do parses <- parse' start mlimit input
@@ -974,9 +980,18 @@ instance JSON PGF.Expr where
 
 instance JSON PGF.BracketedString where
     readJSON x = return (PGF.Leaf "")
-    showJSON (PGF.Bracket cat fid index fun _ bs) =
+    showJSON (PGF.Bracket cat fid _ index fun _ bs) =
         makeObj ["cat".=cat, "fid".=fid, "index".=index, "fun".=fun, "children".=bs]
     showJSON (PGF.Leaf s) = makeObj ["token".=s]
+
+#if C_RUNTIME
+instance JSON C.BracketedString where
+    readJSON x = return (C.Leaf "")
+    showJSON (C.Bracket cat fid index fun bs) =
+        makeObj ["cat".=cat, "fid".=fid, "index".=index, "fun".=fun, "children".=bs]
+    showJSON C.BIND     = makeObj ["bind".=True]
+    showJSON (C.Leaf s) = makeObj ["token".=s]
+#endif
 
 -- * PGF utilities
 {-

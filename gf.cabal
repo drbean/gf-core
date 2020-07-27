@@ -1,5 +1,5 @@
 name: gf
-version: 3.9-git
+version: 3.10.3-git
 
 cabal-version: >= 1.22
 build-type: Custom
@@ -11,7 +11,7 @@ description: GF, Grammatical Framework, is a programming language for multilingu
 homepage: http://www.grammaticalframework.org/
 bug-reports: https://github.com/GrammaticalFramework/gf-core/issues
 maintainer: Thomas Hallgren
-tested-with: GHC==7.6.3, GHC==7.8.3, GHC==7.10.3, GHC==8.0.2
+tested-with: GHC==7.10.3, GHC==8.0.2, GHC==8.2.2, GHC==8.4.3
 
 data-dir: src
 data-files:
@@ -42,7 +42,7 @@ data-files:
 custom-setup
   setup-depends:
     base,
-    Cabal >=1.4.0.0,
+    Cabal >=1.22.0.0,
     directory,
     filepath,
     process >=1.0.1.1
@@ -67,11 +67,6 @@ flag network-uri
 --  Description: Make -new-comp the default
 --  Default:     True
 
-flag custom-binary
-  Description: Use a customised version of the binary package
-  Default:     True
-  Manual:      True
-
 flag c-runtime
   Description: Include functionality from the C run-time library (which must be installed already)
   Default:     False
@@ -89,23 +84,21 @@ Library
                  exceptions
   hs-source-dirs: src/runtime/haskell
 
-  if flag(custom-binary)
-    other-modules:
-      -- not really part of GF but I have changed the original binary library
-      -- and we have to keep the copy for now.
-      Data.Binary
-      Data.Binary.Put
-      Data.Binary.Get
-      Data.Binary.Builder
-      Data.Binary.IEEE754
-  else
-    build-depends: binary, data-binary-ieee754
+  other-modules:
+    -- not really part of GF but I have changed the original binary library
+    -- and we have to keep the copy for now.
+    Data.Binary
+    Data.Binary.Put
+    Data.Binary.Get
+    Data.Binary.Builder
+    Data.Binary.IEEE754
 
 --ghc-options: -fwarn-unused-imports
 --if impl(ghc>=7.8)
 --  ghc-options: +RTS -A20M -RTS
   ghc-prof-options: -fprof-auto
-  extensions:
+  if impl(ghc>=8.6)
+    Default-extensions: NoMonadFailDesugaring
 
   exposed-modules:
     PGF
@@ -149,8 +142,8 @@ Library
 
 ---- GF compiler as a library:
 
-  build-depends: filepath, directory, time, time-compat, old-locale,
-                 process, haskeline, parallel>=3
+  build-depends: filepath, directory>=1.2, time,
+                 process, haskeline, parallel>=3, json
 
   hs-source-dirs: src/compiler
   exposed-modules:
@@ -158,6 +151,7 @@ Library
     GF.Support
     GF.Text.Pretty
     GF.Text.Lexing
+    GF.Grammar.Canonical
 
   other-modules:
     GF.Main GF.Compiler GF.Interactive
@@ -196,6 +190,8 @@ Library
     GF.Compile.PGFtoJava
     GF.Haskell
     GF.Compile.ConcreteToHaskell
+    GF.Compile.GrammarToCanonical
+    GF.Grammar.CanonicalJSON
     GF.Compile.PGFtoJS
     GF.Compile.PGFtoProlog
     GF.Compile.PGFtoPython
@@ -275,7 +271,7 @@ Library
     cpp-options: -DC_RUNTIME
 
   if flag(server)
-    build-depends: httpd-shed>=0.4.0.3, network>=2.3 && <2.7, json,
+    build-depends: httpd-shed>=0.4.0.3, network>=2.3 && <2.7,
                    cgi>=3001.2.2.0
     if flag(network-uri)
       build-depends: network-uri>=2.6, network>=2.6
